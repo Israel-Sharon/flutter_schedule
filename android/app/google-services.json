@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "1018988495587",
+    "firebase_url": "https://schoolschedule-11f95-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "schoolschedule-11f95",
+    "storage_bucket": "schoolschedule-11f95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1018988495587:android:1ec26585b9fedd63ad3bd6",
+        "android_client_info": {
+          "package_name": "com.example.school_schedule"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpec1-Rotuds3XAFDg6I9ORSREFwWeytY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
