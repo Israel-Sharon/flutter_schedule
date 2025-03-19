@@ -68,56 +68,67 @@ class FirebaseService {
     }
   }
 
-  // Add a new teacher
-// In your firebase_service.dart file
-  Future<String?> addTeacher(Teacher teacher, {File? imageFile}) async {
+  Future<String?> addTeacher(Teacher teacher, {dynamic imageFile}) async {
     try {
-      // First add the teacher to Firestore
-      DocumentReference docRef = await FirebaseFirestore.instance.collection('teachers').add({
-        'name': teacher.name,
-        'gender': teacher.gender,
-        'maxHoursPerWeek': teacher.maxHoursPerWeek,
-        'photoUrl': null, // Will update this after uploading image
-      });
-
-      // If there's an image file, upload it
+      final docRef = FirebaseFirestore.instance.collection('teachers').doc();
       String? photoUrl;
-      if (imageFile != null) {
-        // Fix: Make sure you're using the correct Firebase Storage instance
-        final storageRef = FirebaseStorage.instance.ref();
-        final photoRef = storageRef.child('teacher_photos/${docRef.id}');
 
-        // Upload the file
-        await photoRef.putFile(imageFile);
+      if (imageFile != null) {
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('teacher_photos')
+            .child('${docRef.id}.jpg');
+
+        if (kIsWeb) {
+          // For web, imageFile will be Uint8List
+          await storageRef.putData(imageFile);
+        } else {
+          // For mobile, imageFile will be File
+          await storageRef.putFile(imageFile);
+        }
 
         // Get the download URL
-        photoUrl = await photoRef.getDownloadURL();
-
-        // Update the teacher document with the photo URL
-        await docRef.update({'photoUrl': photoUrl});
+        photoUrl = await storageRef.getDownloadURL();
       }
 
+      final teacherWithId = teacher.copyWith(id: docRef.id, photoUrl: photoUrl);
+      await docRef.set(teacherWithId.toMap());
       return docRef.id;
     } catch (e) {
       print('Error adding teacher: $e');
       return null;
     }
   }
-  // Update an existing teacher
-  Future<bool> updateTeacher(Teacher teacher, {File? photoFile}) async {
+
+  Future<bool> updateTeacher(Teacher teacher, {dynamic photoFile}) async {
     try {
-      // If there's a new photo file, upload it
       String? photoUrl = teacher.photoUrl;
+
       if (photoFile != null) {
-        photoUrl = await _uploadTeacherPhoto(photoFile, teacher.id);
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('teacher_photos')
+            .child('${teacher.id}.jpg');
+
+        if (kIsWeb) {
+          // For web, photoFile will be Uint8List
+          await storageRef.putData(photoFile);
+        } else {
+          // For mobile, photoFile will be File
+          await storageRef.putFile(photoFile);
+        }
+
+        // Get the download URL
+        photoUrl = await storageRef.getDownloadURL();
       }
 
-      // Update with possibly new photo URL
-      final Map<String, dynamic> teacherData = teacher.copyWith(
-          photoUrl: photoUrl
-      ).toMap();
+      final updatedTeacher = teacher.copyWith(photoUrl: photoUrl);
 
-      await _teachersCollection.doc(teacher.id).update(teacherData);
+      await FirebaseFirestore.instance
+          .collection('teachers')
+          .doc(teacher.id)
+          .update(updatedTeacher.toMap());
+
       return true;
     } catch (e) {
       print('Error updating teacher: $e');
@@ -159,24 +170,28 @@ class FirebaseService {
       late UploadTask uploadTask;
 
       if (kIsWeb) {
-        // Handle web file upload correctly
         if (photoFile is html.File) {
+          // Handle html.File for web
           final reader = html.FileReader();
           reader.readAsArrayBuffer(photoFile);
           await reader.onLoad.first;
           final Uint8List bytes = reader.result as Uint8List;
 
-          final blob = html.Blob([bytes]);
-          uploadTask = storageRef.putBlob(blob);
-        } else if (photoFile is! html.File) {
-          throw UnsupportedError("Invalid file type for web upload: ${photoFile.runtimeType}. Expected html.File.");
+          uploadTask = storageRef.putData(bytes);
+        } else if (photoFile is Uint8List) {
+          // Handle raw bytes
+          uploadTask = storageRef.putData(photoFile);
+        } else {
+          throw UnsupportedError("Unsupported file type for web: ${photoFile.runtimeType}");
         }
       } else {
-        // Handle mobile/desktop upload
+        // Handle mobile/desktop
         if (photoFile is File) {
           uploadTask = storageRef.putFile(photoFile);
+        } else if (photoFile is Uint8List) {
+          uploadTask = storageRef.putData(photoFile);
         } else {
-          throw UnsupportedError("Invalid file type for mobile/desktop upload: ${photoFile.runtimeType}");
+          throw UnsupportedError("Unsupported file type for mobile: ${photoFile.runtimeType}");
         }
       }
 

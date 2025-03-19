@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'dart:io';
-import 'dart:typed_data';
+import 'package:universal_html/html.dart' as html;
+import 'package:image_picker/image_picker.dart'; // Assuming you have this already
+import '../models/teacher.dart';
+import '../services/firebase_service.dart';
+import '../dialogs/add_teacher_dialog.dart';
+import '../dialogs/edit_teacher_dialog.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class AddTeacherDialog extends StatefulWidget {
-  final Function(String, String, int, File?) onTeacherAdded;
+  final Function(String, String, int, dynamic) onTeacherAdded;
   final String? initialName;
   final String? initialGender;
   final int? initialHours;
@@ -29,11 +34,7 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
   late TextEditingController _nameController;
   late String _selectedGender;
   late int _maxHoursPerWeek;
-
-  // Store the file and bytes
-  File? _imageFile;
-  Uint8List? _imageBytes;
-  bool _hasExistingImage = false;
+  dynamic _selectedImage; // Can be File or Uint8List depending on platform
 
   @override
   void initState() {
@@ -41,7 +42,6 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
     _nameController = TextEditingController(text: widget.initialName ?? '');
     _selectedGender = widget.initialGender ?? 'male';
     _maxHoursPerWeek = widget.initialHours ?? 20;
-    _hasExistingImage = widget.existingPhotoUrl != null && widget.existingPhotoUrl!.isNotEmpty;
   }
 
   @override
@@ -51,27 +51,51 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
   }
 
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (kIsWeb) {
+      final input = html.FileUploadInputElement()..accept = 'image/*';
+      input.click();
+      await input.onChange.first;
+      if (input.files!.isNotEmpty) {
+        final file = input.files![0];
+        final reader = html.FileReader();
 
-    if (pickedFile != null) {
-      final bytes = await pickedFile.readAsBytes();
-      setState(() {
-        _imageFile = File(pickedFile.path);
-        _imageBytes = bytes;
-        _hasExistingImage = false; // We're replacing any existing image
-      });
+        reader.readAsArrayBuffer(file);
+        await reader.onLoad.first;
+
+        setState(() {
+          _selectedImage = reader.result as Uint8List; // Store as Uint8List
+        });
+      }
+    } else {
+      final ImagePicker picker = ImagePicker();
+      final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedImage != null) {
+        setState(() {
+          _selectedImage = File(pickedImage.path);
+        });
+      }
     }
   }
 
   void _submitForm() {
     if (_formKey.currentState?.validate() ?? false) {
+      dynamic imageToSend;
+
+      if (kIsWeb && _selectedImage is Uint8List) {
+        imageToSend = _selectedImage; // Keep as Uint8List for web (Firebase handles this)
+      } else if (!kIsWeb && _selectedImage is File) {
+        imageToSend = _selectedImage; // Keep as File for mobile
+      } else {
+        imageToSend = null; // No image selected
+      }
+
       widget.onTeacherAdded(
-          _nameController.text.trim(),
-          _selectedGender,
-          _maxHoursPerWeek,
-          _imageFile // Pass the image file to the callback
+        _nameController.text.trim(),
+        _selectedGender,
+        _maxHoursPerWeek,
+        _selectedImage, // Correct type
       );
+
       Navigator.of(context).pop();
     }
   }
@@ -86,7 +110,6 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Image picker widget with support for existing or new image
               GestureDetector(
                 onTap: _pickImage,
                 child: Container(
@@ -96,29 +119,20 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
                     color: Colors.grey[200],
                     shape: BoxShape.circle,
                   ),
-                  child: _imageBytes != null
+                  child: _selectedImage != null
                       ? ClipOval(
-                    child: Image.memory(
-                      _imageBytes!,
+                    child: kIsWeb
+                        ? Image.memory(
+                      _selectedImage as Uint8List, // Use stored Uint8List
                       width: 100,
                       height: 100,
                       fit: BoxFit.cover,
-                    ),
-                  )
-                      : _hasExistingImage
-                      ? ClipOval(
-                    child: Image.network(
-                      widget.existingPhotoUrl!,
+                    )
+                        : Image.file(
+                      _selectedImage as File,
                       width: 100,
                       height: 100,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Icon(
-                          Icons.person,
-                          size: 40,
-                          color: Colors.grey[400],
-                        );
-                      },
                     ),
                   )
                       : Icon(
@@ -129,22 +143,15 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Name field
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: 'Teacher Name',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter teacher name';
-                  }
-                  return null;
-                },
+                validator: (value) => value == null || value.isEmpty ? 'Please enter teacher name' : null,
               ),
               const SizedBox(height: 16),
-              // Gender dropdown
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
                   labelText: 'Gender',
@@ -157,14 +164,9 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
                   child: Text(gender.capitalize()),
                 ))
                     .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedGender = value ?? 'male';
-                  });
-                },
+                onChanged: (value) => setState(() => _selectedGender = value ?? 'male'),
               ),
               const SizedBox(height: 16),
-              // Hours field
               TextFormField(
                 initialValue: _maxHoursPerWeek.toString(),
                 decoration: const InputDecoration(
@@ -172,22 +174,14 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter max hours';
-                  }
-                  final hours = int.tryParse(value);
+                  final hours = int.tryParse(value ?? '');
                   if (hours == null || hours < 1 || hours > 40) {
                     return 'Hours must be between 1 and 40';
                   }
                   return null;
                 },
-                onChanged: (value) {
-                  setState(() {
-                    _maxHoursPerWeek = int.tryParse(value) ?? 20;
-                  });
-                },
+                onChanged: (value) => setState(() => _maxHoursPerWeek = int.tryParse(value) ?? 20),
               ),
             ],
           ),
@@ -207,9 +201,8 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
   }
 }
 
-// Extension method to capitalize first letter
 extension StringExtension on String {
   String capitalize() {
-    return "${this[0].toUpperCase()}${substring(1)}";
+    return isNotEmpty ? '${this[0].toUpperCase()}${substring(1)}' : this;
   }
 }

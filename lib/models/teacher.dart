@@ -10,29 +10,30 @@ class Teacher {
   final int? classCount;
   final int? studentCount;
   final double? rating;
-  final Map<String, dynamic> additionalInfo;
-  final int maxHoursPerWeek;
+  final int? maxHoursPerWeek; // Change from String? to int?
+
   final int displayOrder;
+
+  var additionalInfo;
 
 
   Teacher({
     required this.id,
     required this.name,
-   // required this.subject,
     this.photoUrl,
-    this.gender ,
+    this.gender,
     this.isActive = true,
     this.classCount = 0,
     this.studentCount = 0,
     this.rating = 0.0,
     this.additionalInfo = const {},
-    required this.maxHoursPerWeek,
+    this.maxHoursPerWeek, // Change type here as well
     this.displayOrder = 1,
   });
 
   factory Teacher.fromMap(String id, Map<String, dynamic> data) {
     return Teacher(
-      id: id,
+      id: data['id'] ?? '',
       name: data['name'] ?? '',
      // subject: data['subject'] ?? '',
       photoUrl: data['photoUrl'],
@@ -42,12 +43,15 @@ class Teacher {
       studentCount: data['studentCount'] ?? 0,
       rating: (data['rating'] ?? 0.0).toDouble(),
       additionalInfo: Map<String, dynamic>.from(data['additionalInfo'] ?? {}),
-      maxHoursPerWeek: data['maxHoursPerWeek'],
+      maxHoursPerWeek: (data['maxHoursPerWeek'] is int)
+          ? data['maxHoursPerWeek']
+          : int.tryParse(data['maxHoursPerWeek']?.toString() ?? '0') ?? 0, // Ensure int conversion
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'name': name,
       //'subject': subject,
       'photoUrl': photoUrl,
@@ -62,6 +66,7 @@ class Teacher {
   }
 
   Teacher copyWith({
+    String? id,
     String? name,
     //String? subject,
     String? photoUrl,
@@ -74,7 +79,7 @@ class Teacher {
     int? maxHoursPerWeek,
   }) {
     return Teacher(
-      id: id,
+      id: id ?? this.id ,
       name: name ?? this.name,
       //subject: subject ?? this.subject,
       photoUrl: photoUrl ?? this.photoUrl,
@@ -84,7 +89,7 @@ class Teacher {
       studentCount: studentCount ?? this.studentCount,
       rating: rating ?? this.rating,
       additionalInfo: additionalInfo ?? this.additionalInfo,
-      maxHoursPerWeek: maxHoursPerWeek ?? this.maxHoursPerWeek,
+      maxHoursPerWeek: maxHoursPerWeek ?? this.maxHoursPerWeek, // Update here
     );
   }
 }

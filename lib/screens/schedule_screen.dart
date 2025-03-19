@@ -257,8 +257,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Teacher Schedule Management"),
-        backgroundColor: Colors.grey[500],
+        title: Row(
+          children: [
+            const Text("בית הספר דקלים"),
+            const SizedBox(width: 0), // Add some spacing between text and image
+            Image.asset(
+              'assets/images/img2.png', // Corrected the path
+              height: 50, // Adjust height as needed
+              width: 150,
+              alignment: Alignment.topCenter,
+            ),
+          ],
+        ),
+        backgroundColor: Colors.black12 , // Fixed background color placement
         actions: [
           // Week navigation controls
           IconButton(
