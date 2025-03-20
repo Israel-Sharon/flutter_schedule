@@ -1,14 +1,12 @@
 // firebase_service.dart
 
-import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/teacher.dart';
 import '../models/schedule_slot.dart';
 import '../models/week_settings.dart';
 import '../models/class.dart';
-import 'package:universal_html/html.dart' as html;
 
 
 class FirebaseService {
@@ -157,54 +155,6 @@ class FirebaseService {
   }
 
 // Upload a teacher photo that works on both web and mobile
-  Future<String?> _uploadTeacherPhoto(dynamic photoFile, String? teacherId) async {
-    try {
-      print("photoFile type: ${photoFile.runtimeType}"); // Debugging line
-
-      final String fileName = teacherId != null
-          ? 'teacher_${teacherId}.jpg'
-          : 'teacher_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      final Reference storageRef = _storage.ref().child('teacher_photos/$fileName');
-
-      late UploadTask uploadTask;
-
-      if (kIsWeb) {
-        if (photoFile is html.File) {
-          // Handle html.File for web
-          final reader = html.FileReader();
-          reader.readAsArrayBuffer(photoFile);
-          await reader.onLoad.first;
-          final Uint8List bytes = reader.result as Uint8List;
-
-          uploadTask = storageRef.putData(bytes);
-        } else if (photoFile is Uint8List) {
-          // Handle raw bytes
-          uploadTask = storageRef.putData(photoFile);
-        } else {
-          throw UnsupportedError("Unsupported file type for web: ${photoFile.runtimeType}");
-        }
-      } else {
-        // Handle mobile/desktop
-        if (photoFile is File) {
-          uploadTask = storageRef.putFile(photoFile);
-        } else if (photoFile is Uint8List) {
-          uploadTask = storageRef.putData(photoFile);
-        } else {
-          throw UnsupportedError("Unsupported file type for mobile: ${photoFile.runtimeType}");
-        }
-      }
-
-      // Wait for upload completion
-      final TaskSnapshot taskSnapshot = await uploadTask;
-      final String downloadUrl = await taskSnapshot.ref.getDownloadURL();
-
-      return downloadUrl;
-    } catch (e) {
-      print('Error uploading teacher photo: $e');
-      return null;
-    }
-  }
 
   Future<bool> updateTeacherDisplayOrder(String teacherId, int displayOrder) async {
     try {
@@ -303,7 +253,7 @@ class FirebaseService {
       }
     } catch (e) {
       print('Error assigning teacher to slot: $e');
-      throw e; // Re-throw to handle in the UI
+      rethrow; // Re-throw to handle in the UI
     }
   }
 
@@ -335,7 +285,7 @@ class FirebaseService {
       }
     } catch (e) {
       print('Error removing teacher from slot: $e');
-      throw e; // Re-throw to handle in the UI
+      rethrow; // Re-throw to handle in the UI
     }
   }
 
