@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/teacher.dart';
 import '../services/firebase_service.dart';
@@ -225,7 +224,7 @@ class _TeacherListState extends State<TeacherList> {
                   builder: (context) => AddTeacherDialog(
                     onTeacherAdded: (name, gender, hours, imageFile) {
                       // Convert hours to int
-                      final hoursValue = int.tryParse(hours?.toString() ?? '0') ?? 0;
+                      final hoursValue = int.tryParse(hours.toString()) ?? 0;
                       final newTeacher = Teacher(
                         id: '',
                         name: name,
@@ -342,7 +341,7 @@ class _TeacherListState extends State<TeacherList> {
                           existingPhotoUrl: teacher.photoUrl,
                           onTeacherAdded: (name, gender, hours, imageFile) {
                             // Convert hours to int
-                            final hoursValue = int.tryParse(hours?.toString() ?? '0') ?? 0;
+                            final hoursValue = int.tryParse(hours.toString()) ?? 0;
 
                             final updatedTeacher = teacher.copyWith(
                               name: name,

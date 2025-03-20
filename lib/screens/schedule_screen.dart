@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/firebase_service.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import '../models/teacher.dart';
 import '../models/schedule_slot.dart';
 import '../models/week_settings.dart';
@@ -259,7 +258,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text("בית הספר דקלים"),
+            const Text(" בית הספר דקלים"),
             const SizedBox(width: 0), // Add some spacing between text and image
             Image.asset(
               'assets/images/img2.png', // Corrected the path

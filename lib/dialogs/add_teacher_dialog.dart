@@ -3,11 +3,7 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'dart:io';
 import 'package:universal_html/html.dart' as html;
 import 'package:image_picker/image_picker.dart'; // Assuming you have this already
-import '../models/teacher.dart';
-import '../services/firebase_service.dart';
 import '../dialogs/add_teacher_dialog.dart';
-import '../dialogs/edit_teacher_dialog.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 class AddTeacherDialog extends StatefulWidget {
   final Function(String, String, int, dynamic) onTeacherAdded;
@@ -26,6 +22,7 @@ class AddTeacherDialog extends StatefulWidget {
   });
 
   @override
+  // ignore: library_private_types_in_public_api
   _AddTeacherDialogState createState() => _AddTeacherDialogState();
 }
 
@@ -79,14 +76,13 @@ class _AddTeacherDialogState extends State<AddTeacherDialog> {
 
   void _submitForm() {
     if (_formKey.currentState?.validate() ?? false) {
-      dynamic imageToSend;
 
       if (kIsWeb && _selectedImage is Uint8List) {
-        imageToSend = _selectedImage; // Keep as Uint8List for web (Firebase handles this)
+// Keep as Uint8List for web (Firebase handles this)
       } else if (!kIsWeb && _selectedImage is File) {
-        imageToSend = _selectedImage; // Keep as File for mobile
+// Keep as File for mobile
       } else {
-        imageToSend = null; // No image selected
+// No image selected
       }
 
       widget.onTeacherAdded(

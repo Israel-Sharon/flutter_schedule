@@ -22,8 +22,8 @@ class TeacherAvatar extends StatelessWidget {
       // Fallback icon based on gender
       IconData iconData = teacher.gender == 'Male' ? Icons.man : Icons.woman;
       return CircleAvatar(
-        child: Icon(iconData),
         radius: radius,
+        child: Icon(iconData),
       );
     }
   }
