@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "schoolschedule-11f95",
+          "appId": "1:1018988495587:android:1ec26585b9fedd63ad3bd6",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "schoolschedule-11f95",
+          "configurations": {
+            "android": "1:1018988495587:android:1ec26585b9fedd63ad3bd6",
+            "ios": "1:1018988495587:ios:8ef8e54635a0923dad3bd6",
+            "macos": "1:1018988495587:ios:8ef8e54635a0923dad3bd6",
+            "web": "1:1018988495587:web:140720cf3e95c3dcad3bd6",
+            "windows": "1:1018988495587:web:f2fa6e09c2d6fad3ad3bd6"
+          }
+        }
+      }
+    }
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

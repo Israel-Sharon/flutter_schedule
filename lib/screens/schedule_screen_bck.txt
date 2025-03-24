@@ -1,0 +1,794 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../services/firebase_service.dart';
+import '../models/teacher.dart';
+import '../models/schedule_slot.dart';
+import '../models/week_settings.dart';
+
+class ScheduleScreen extends StatefulWidget {
+  @override
+  _ScheduleScreenState createState() => _ScheduleScreenState();
+}
+
+class _ScheduleScreenState extends State<ScheduleScreen> {
+  final FirebaseService _firebaseService = FirebaseService();
+  List<Teacher> _teachers = [];
+  List<ScheduleSlot> _scheduleSlots = [];
+  List<WeekSettings> _weekSettings = [];
+  bool _isLoading = true;
+  DateTime _currentWeekStart = DateTime.now().subtract(Duration(days: DateTime.now().weekday % 7));
+  String _previousWeekKey = '';
+
+  // Week navigation
+  void _goToPreviousWeek() {
+    setState(() {
+      _previousWeekKey = _getWeekKey(_currentWeekStart);
+      _currentWeekStart = _currentWeekStart.subtract(Duration(days: 7));
+      _loadData(checkIfEmpty: true);
+    });
+  }
+
+  void _goToNextWeek() {
+    setState(() {
+      _previousWeekKey = _getWeekKey(_currentWeekStart);
+      _currentWeekStart = _currentWeekStart.add(Duration(days: 7));
+      _loadData(checkIfEmpty: true);
+    });
+  }
+
+  String _formatWeekDisplay() {
+    final endDate = _currentWeekStart.add(Duration(days: 6));
+    final startFormat = DateFormat('MMM d');
+    final endFormat = DateFormat('MMM d, yyyy');
+    return '${startFormat.format(_currentWeekStart)} - ${endFormat.format(endDate)}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData({bool checkIfEmpty = false}) async {
+    setState(() => _isLoading = true);
+    final weekKey = _getWeekKey(_currentWeekStart);
+
+    try {
+      _teachers = await _firebaseService.getTeachers();
+      _scheduleSlots = await _firebaseService.getScheduleSlotsByWeek(weekKey);
+      _weekSettings = await _firebaseService.getWeekSettings();
+
+      if (checkIfEmpty && _scheduleSlots.isEmpty && _previousWeekKey.isNotEmpty) {
+        _promptCopyFromPreviousWeek();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error loading data: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _promptCopyFromPreviousWeek() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Empty Schedule"),
+        content: Text("This week has no assignments. Would you like to copy all assignments from the previous week?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("No"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _copyFromPreviousWeek();
+            },
+            child: Text("Yes, Copy"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyFromPreviousWeek() async {
+    setState(() => _isLoading = true);
+    try {
+      final previousSlots = await _firebaseService.getScheduleSlotsByWeek(_previousWeekKey);
+      final currentWeekKey = _getWeekKey(_currentWeekStart);
+
+      // Create new slots for current week based on previous week
+      for (var slot in previousSlots) {
+        await _firebaseService.assignTeacherToSlot(
+            slot.dayIndex,
+            slot.slotIndex,
+            slot.teacherId,
+            currentWeekKey
+        );
+      }
+
+      // Reload the data
+      _scheduleSlots = await _firebaseService.getScheduleSlotsByWeek(currentWeekKey);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Assignments copied from previous week"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error copying assignments: ${e.toString()}"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _getWeekKey(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
+
+  void _showAddTeacherDialog() {
+    TextEditingController nameController = TextEditingController();
+    TextEditingController hoursController = TextEditingController(text: "20");
+    String gender = 'male';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Add Teacher"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: "Teacher Name",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: hoursController,
+                  decoration: InputDecoration(
+                    labelText: "Max Hours Per Week",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.access_time),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: gender,
+                  decoration: InputDecoration(
+                    labelText: "Gender",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.people),
+                  ),
+                  items: [
+                    DropdownMenuItem(value: 'male', child: Text('Male')),
+                    DropdownMenuItem(value: 'female', child: Text('Female')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (value) {
+                    gender = value!;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isNotEmpty) {
+                  int maxHours = int.tryParse(hoursController.text) ?? 20;
+                  await _firebaseService.addTeacher(
+                      nameController.text,
+                      gender,
+                      maxHours
+                  );
+                  _loadData();
+                  Navigator.pop(context);
+                }
+              },
+              child: Text("Add"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _deleteTeacher(String id) async {
+    // Confirmation dialog
+    bool confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Confirm Deletion"),
+        content: Text("Are you sure you want to remove this teacher? This will also remove them from all assigned slots."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text("Delete"),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (confirm) {
+      await _firebaseService.deleteTeacher(id);
+      _loadData();
+    }
+  }
+
+  int _getAssignedHours(String teacherId) {
+    return _scheduleSlots.where((slot) => slot.teacherId == teacherId).length;
+  }
+
+  void _editTeacher(Teacher teacher) {
+    TextEditingController nameController = TextEditingController(text: teacher.name);
+    TextEditingController hoursController = TextEditingController(text: teacher.maxHoursPerWeek.toString());
+    String gender = teacher.gender;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text("Edit Teacher"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: "Teacher Name",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: hoursController,
+                  decoration: InputDecoration(
+                    labelText: "Max Hours Per Week",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.access_time),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: gender,
+                  decoration: InputDecoration(
+                    labelText: "Gender",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.people),
+                  ),
+                  items: [
+                    DropdownMenuItem(value: 'male', child: Text('Male')),
+                    DropdownMenuItem(value: 'female', child: Text('Female')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (value) {
+                    gender = value!;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (nameController.text.trim().isNotEmpty) {
+                  int maxHours = int.tryParse(hoursController.text) ?? 20;
+                  await _firebaseService.updateTeacher(
+                      teacher.id,
+                      nameController.text,
+                      gender,
+                      maxHours
+                  );
+                  _loadData();
+                  Navigator.pop(context);
+                }
+              },
+              child: Text("Save"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTeacherList() {
+    return Container(
+      width: 280,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.3),
+            blurRadius: 5,
+            offset: Offset(2, 0),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+            color: Colors.blue[700],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Teachers",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: Colors.white,
+                  ),
+                ),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.add),
+                  label: Text("Add"),
+                  onPressed: _showAddTeacherDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.blue[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _teachers.isEmpty
+                ? Center(
+              child: Text(
+                "No teachers yet.\nClick 'Add' to create one.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            )
+                : ListView.separated(
+              itemCount: _teachers.length,
+              separatorBuilder: (context, index) => Divider(height: 1),
+              itemBuilder: (context, index) {
+                final teacher = _teachers[index];
+                final assignedHours = _getAssignedHours(teacher.id);
+                final remainingHours = teacher.maxHoursPerWeek - assignedHours;
+
+                return Draggable<Teacher>(
+                  data: teacher,
+                  feedback: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[100],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue[700]!),
+                      ),
+                      child: Text(
+                        teacher.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    leading: CircleAvatar(
+                      backgroundColor: remainingHours <= 0 ? Colors.red : Colors.blue,
+                      child: Icon(
+                        teacher.gender == 'female' ? Icons.female : Icons.male,
+                        color: Colors.white,
+                      ),
+                    ),
+                    title: Text(
+                      teacher.name,
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(height: 4),
+                        _buildProgressIndicator(assignedHours, teacher.maxHoursPerWeek),
+                        SizedBox(height: 4),
+                        Text(
+                          "Hours: $assignedHours/${teacher.maxHoursPerWeek} (${remainingHours} remaining)",
+                          style: TextStyle(
+                            color: remainingHours <= 0 ? Colors.red : Colors.black87,
+                            fontWeight: remainingHours <= 0 ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _editTeacher(teacher),
+                          tooltip: "Edit",
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _deleteTeacher(teacher.id),
+                          tooltip: "Delete",
+                        ),
+                      ],
+                    ),
+                    isThreeLine: true,
+                  ),
+                  childWhenDragging: Container(
+                    height: 80,
+                    color: Colors.grey[100],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressIndicator(int assigned, int max) {
+    final double percentage = max > 0 ? assigned / max : 0;
+    final Color progressColor = percentage >= 1
+        ? Colors.red
+        : percentage >= 0.8
+        ? Colors.orange
+        : Colors.green;
+
+    return Container(
+      height: 8,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey[300],
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: percentage.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: progressColor,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScheduleGrid() {
+    final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    final timeSlots = ['8:00 - 9:30', '10:00 - 11:30', '12:00 - 1:30', '2:00 - 3:30', '4:00 - 5:30'];
+
+    return Column(
+      children: [
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue[700],
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back_ios, color: Colors.white),
+                onPressed: _goToPreviousWeek,
+                tooltip: "Previous Week",
+              ),
+              Text(
+                _formatWeekDisplay(),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.arrow_forward_ios, color: Colors.white),
+                onPressed: _goToNextWeek,
+                tooltip: "Next Week",
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Table(
+              border: TableBorder.all(color: Colors.grey[300]!),
+              columnWidths: {
+                0: FixedColumnWidth(120),
+                1: FlexColumnWidth(),
+                2: FlexColumnWidth(),
+                3: FlexColumnWidth(),
+                4: FlexColumnWidth(),
+                5: FlexColumnWidth(),
+              },
+              children: [
+                // Header row with days
+                TableRow(
+                  decoration: BoxDecoration(color: Colors.grey[200]),
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(12),
+                      alignment: Alignment.center,
+                      child: Text(
+                        "Time Slots",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    ...dayNames.map((day) => Container(
+                      padding: EdgeInsets.all(12),
+                      alignment: Alignment.center,
+                      child: Text(
+                        day,
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    )).toList(),
+                  ],
+                ),
+
+                // Time slot rows
+                for (int i = 0; i < 5; i++)
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: i % 2 == 0 ? Colors.white : Colors.grey[50],
+                    ),
+                    children: [
+                      // Time label
+                      Container(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        alignment: Alignment.center,
+                        child: Text(
+                          timeSlots[i],
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+
+                      // Day cells
+                      for (int j = 0; j < 5; j++)
+                        _buildScheduleCell(j, i),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildScheduleCell(int day, int slot) {
+    // Get all schedule slots for this day and time
+    final List<ScheduleSlot> cellSlots = _scheduleSlots.where(
+            (s) => s.dayIndex == day.toString() && s.slotIndex == slot.toString() && s.teacherId.isNotEmpty
+    ).toList();
+
+    // Get assigned teachers
+    List<Teacher> assignedTeachers = [];
+    for (var scheduleSlot in cellSlots) {
+      final matchingTeachers = _teachers.where((t) => t.id == scheduleSlot.teacherId);
+      if (matchingTeachers.isNotEmpty) {
+        assignedTeachers.add(matchingTeachers.first);
+      }
+    }
+
+    return DragTarget<Teacher>(
+      onAccept: (teacher) async {
+        final int assignedHours = _getAssignedHours(teacher.id);
+
+        // Check if the teacher has available hours
+        if (assignedHours >= teacher.maxHoursPerWeek) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("${teacher.name} has already reached maximum hours (${teacher.maxHoursPerWeek})."),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        // Check if teacher is already assigned to this slot
+        bool alreadyAssigned = cellSlots.any((slot) => slot.teacherId == teacher.id);
+        if (alreadyAssigned) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("${teacher.name} is already assigned to this slot."),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        await _firebaseService.assignTeacherToSlot(
+            day.toString(),
+            slot.toString(),
+            teacher.id,
+            _getWeekKey(_currentWeekStart)
+        );
+
+        _loadData();
+      },
+      builder: (context, candidateData, rejectedData) {
+        return Container(
+          padding: EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: candidateData.isNotEmpty ? Colors.blue : Colors.transparent,
+              width: 2,
+            ),
+            color: candidateData.isNotEmpty ? Colors.blue[50] : null,
+          ),
+          child: assignedTeachers.isNotEmpty
+              ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ...assignedTeachers.map((teacher) => Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.grey[700]!),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          teacher.name,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () async {
+                          // Find the slot for this teacher
+                          final slotToRemove = cellSlots.firstWhere(
+                                (slot) => slot.teacherId == teacher.id,
+                            orElse: () => ScheduleSlot(
+                                id: '',
+                                dayIndex: day.toString(),
+                                slotIndex: slot.toString(),
+                                teacherId: teacher.id,
+                                weekKey: _getWeekKey(_currentWeekStart)
+                            ),
+                          );
+
+                          // Remove teacher from this slot
+                          await _firebaseService.removeTeacherFromSlot(
+                              day.toString(),
+                              slot.toString(),
+                              _getWeekKey(_currentWeekStart),
+                              teacherId: teacher.id
+                          );
+
+                          _loadData();
+                        },
+                        child: Icon(
+                          Icons.close,
+                          size: 16,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )),
+              if (assignedTeachers.length < 3) // Limit number of teachers per cell
+                Text(
+                  "Drop teacher here to add more",
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontStyle: FontStyle.italic,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+            ],
+          )
+              : Center(
+            child: Text(
+              "Drop teacher here",
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Teacher Schedule Management"),
+        backgroundColor: Colors.grey[500],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _loadData,
+            tooltip: "Refresh Data",
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text("Loading schedule data..."),
+          ],
+        ),
+      )
+          : Container(
+        color: Colors.grey[100],
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildTeacherList(),
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.2),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: _buildScheduleGrid(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

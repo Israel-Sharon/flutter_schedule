@@ -1,0 +1,46 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+    
+        {
+            "name": "school_schedule",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "school_schedule (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "school_schedule (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "schedule_app",
+            "cwd": "schedule_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "schedule_app (profile mode)",
+            "cwd": "schedule_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "schedule_app (release mode)",
+            "cwd": "schedule_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}
